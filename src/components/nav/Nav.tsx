@@ -18,8 +18,7 @@ export function Nav() {
   const navLinks = [
     { label: T.nav.projects, href: "#projects" },
     { label: T.nav.stack, href: "#expertise" },
-    { label: T.nav.process, href: "#ai" },
-    { label: T.nav.contact, href: "#contact" },
+{ label: T.nav.contact, href: "#contact" },
   ];
 
   return (

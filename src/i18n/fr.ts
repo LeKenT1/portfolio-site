@@ -4,8 +4,7 @@ export const fr: Translations = {
   nav: {
     projects: "Projets",
     stack: "Stack",
-    process: "Process",
-    contact: "Contact",
+contact: "Contact",
     langSwitch: "EN",
   },
   hero: {
@@ -57,33 +56,6 @@ export const fr: Translations = {
     selfHostingHighlight: "souveraineté et confidentialité des données",
     selfHostingAfter:
       ". Services de niveau production sans dépendance aux fournisseurs cloud.",
-  },
-  ai: {
-    label: "Methodology",
-    title: "AI Workflow Philosophy.",
-    subtitle:
-      "Les outils IA accélèrent l'exécution — sans remplacer le jugement. La discipline consiste à savoir quelles décisions déléguer et lesquelles conserver.",
-    principles: [
-      {
-        title: "40x Throughput",
-        body: "L'IA gère le boilerplate, le scaffolding syntaxique et les premières implémentations — compressant des jours de travail en quelques heures.",
-      },
-      {
-        title: "100% Code Ownership",
-        body: "Chaque ligne relue, comprise et justifiée. L'IA est co-pilote ; l'architecture et les décisions logiques restent les miennes.",
-      },
-      {
-        title: "Cursor + Claude",
-        body: "Boucles de feedback serrées avec Cursor IDE et Claude comme collaborateurs context-aware pour la génération et la révision en éditeur.",
-      },
-      {
-        title: "Structured Commits",
-        body: "Le code assisté par IA passe quand même par le même cycle de révision rigoureux : typé, testé, commité avec intention.",
-      },
-    ],
-    statProductivity: "Gain de productivité",
-    statCodeReviewed: "Code relu",
-    statBlackBox: "Commits boîte noire",
   },
   contact: {
     label: "Contact",

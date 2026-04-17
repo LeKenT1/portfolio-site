@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { FeaturedProjectCard, SidebarProjectCard, ProjectData } from "./ProjectCard";
+import { motion, LayoutGroup } from "framer-motion";
+import { ProjectCard, ProjectData } from "./ProjectCard";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { useTranslation } from "@/i18n/context";
 
@@ -75,27 +75,26 @@ export function Projects() {
         </div>
 
         {/* Grid: featured (2/3) + sidebar (1/3) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5 items-start">
-          {/* Featured card */}
-          <div className="lg:col-span-2">
-            <AnimatePresence mode="wait">
-              <FeaturedProjectCard key={activeId} project={featured} />
-            </AnimatePresence>
-          </div>
+        <LayoutGroup>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5 items-start">
+            {/* Featured card */}
+            <div className="lg:col-span-2">
+              <ProjectCard key={activeId} project={featured} isFeatured={true} />
+            </div>
 
-          {/* Sidebar — clickable previews */}
-          <div className="lg:col-span-1 flex flex-col gap-4 lg:gap-5">
-            <AnimatePresence>
+            {/* Sidebar — clickable previews */}
+            <div className="lg:col-span-1 flex flex-col gap-4 lg:gap-5">
               {others.map((project) => (
-                <SidebarProjectCard
+                <ProjectCard
                   key={project.id}
                   project={project}
-                  onClick={() => setActiveId(project.id)}
+                  isFeatured={false}
+                  onSelect={() => setActiveId(project.id)}
                 />
               ))}
-            </AnimatePresence>
+            </div>
           </div>
-        </div>
+        </LayoutGroup>
 
         <motion.p
           initial={{ opacity: 0 }}

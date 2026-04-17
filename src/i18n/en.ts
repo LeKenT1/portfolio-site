@@ -4,8 +4,7 @@ export const en: Translations = {
   nav: {
     projects: "Projects",
     stack: "Stack",
-    process: "Process",
-    contact: "Contact",
+contact: "Contact",
     langSwitch: "FR",
   },
   hero: {
@@ -57,33 +56,6 @@ export const en: Translations = {
     selfHostingHighlight: "data sovereignty and privacy",
     selfHostingAfter:
       ". Running production-grade services without cloud vendor lock-in.",
-  },
-  ai: {
-    label: "Methodology",
-    title: "AI Workflow Philosophy.",
-    subtitle:
-      "AI tools accelerate execution — not replace judgment. The discipline is in knowing which decisions to delegate and which to own completely.",
-    principles: [
-      {
-        title: "40x Throughput",
-        body: "AI handles boilerplate, syntax scaffolding, and first-draft implementations — compressing days of work into hours.",
-      },
-      {
-        title: "100% Code Ownership",
-        body: "Every line reviewed, understood, and justified. AI is the co-pilot; architecture and logic decisions stay mine.",
-      },
-      {
-        title: "Cursor + Claude",
-        body: "Tight feedback loops with Cursor IDE and Claude as context-aware collaborators for in-editor generation and review.",
-      },
-      {
-        title: "Structured Commits",
-        body: "AI-assisted code still ships through the same rigorous review cycle: typed, tested, committed with intent.",
-      },
-    ],
-    statProductivity: "Productivity gain",
-    statCodeReviewed: "Code reviewed",
-    statBlackBox: "Black-box commits",
   },
   contact: {
     label: "Contact",
