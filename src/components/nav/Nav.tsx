@@ -1,24 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { GitHubIcon, LinkedInIcon } from "@/components/ui/BrandIcons";
 import { useTranslation } from "@/i18n/context";
+import { useSectionNav } from "@/components/scroll-zoom/SectionProvider";
 
 export function Nav() {
   const { T, locale, setLocale } = useTranslation();
-  const { scrollY } = useScroll();
-  const borderOpacity = useTransform(scrollY, [0, 80], [0, 1]);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    return scrollY.on("change", (v) => setScrolled(v > 40));
-  }, [scrollY]);
+  const { current, sectionIds, navigate } = useSectionNav();
+  const scrolled = current > 0;
 
   const navLinks = [
-    { label: T.nav.projects, href: "#projects" },
-    { label: T.nav.stack, href: "#expertise" },
-{ label: T.nav.contact, href: "#contact" },
+    { label: T.nav.projects, sectionId: "projects" },
+    { label: T.nav.stack, sectionId: "expertise" },
+    { label: T.nav.contact, sectionId: "contact" },
   ];
 
   return (
@@ -34,30 +29,42 @@ export function Nav() {
         transition: "background-color 0.3s, backdrop-filter 0.3s",
       }}
     >
-      <motion.div
+      <div
         className="absolute bottom-0 left-0 right-0 h-px bg-[var(--border)]"
-        style={{ opacity: borderOpacity }}
+        style={{ opacity: scrolled ? 1 : 0, transition: "opacity 0.3s ease" }}
       />
 
       {/* Logo / Name */}
-      <a
-        href="#"
+      <button
+        onClick={() => navigate(0)}
         className="font-mono text-xs tracking-widest uppercase text-[var(--foreground)] hover:text-[var(--accent)] transition-colors duration-200"
+        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
       >
         LQ
-      </a>
+      </button>
 
       {/* Nav links */}
       <nav className="hidden md:flex items-center gap-7">
-        {navLinks.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className="text-xs font-mono tracking-widest uppercase text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors duration-200"
-          >
-            {link.label}
-          </a>
-        ))}
+        {navLinks.map((link) => {
+          const idx = sectionIds.indexOf(link.sectionId);
+          const isActive = current === idx;
+          return (
+            <button
+              key={link.sectionId}
+              onClick={() => navigate(idx)}
+              className="text-xs font-mono tracking-widest uppercase transition-colors duration-200"
+              style={{
+                color: isActive ? "var(--accent)" : "var(--muted-foreground)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              {link.label}
+            </button>
+          );
+        })}
       </nav>
 
       {/* Right — social icons + language switcher */}
