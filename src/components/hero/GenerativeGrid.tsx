@@ -50,7 +50,7 @@ const ACCENT           = [200, 169, 126] as const;
 const INFLUENCE_RADIUS = 120;
 const CONNECT_RADIUS   = 100;
 const LINE_MAX_DIST    = 60;
-const CHIP_HOVER_R     = 150;
+const CHIP_HOVER_R     = 70;
 const RIPPLE_DURATION  = 900;
 
 // Dot physics
@@ -71,6 +71,9 @@ const IMPULSE_RADIUS = 170;
 const IMPULSE_STR    = 12;
 const CHIP_IMPULSE_R = 200;
 const CHIP_IMPULSE_STR = 6;
+
+// Drag attract — low value = slow visible travel, no distance modulation
+const PULL_STRENGTH  = 0.55;
 
 // Chip visual constants
 const CHIP_FONT  = "12px 'Courier New', monospace";
@@ -94,6 +97,9 @@ export function GenerativeGrid() {
   const startTimeRef   = useRef<number>(0);
   const hoveredRef     = useRef<number>(-1);
   const hoverStartRef  = useRef<number>(0);
+  const isDraggingRef  = useRef(false);
+  const dragStartRef   = useRef(0);
+  const dragOriginRef  = useRef({ x: -1000, y: -1000 });
 
   const buildGrid = useCallback((canvas: HTMLCanvasElement) => {
     const gap  = 28;
@@ -175,18 +181,37 @@ export function GenerativeGrid() {
       }
     };
 
-    section?.addEventListener("mousemove", handleMouseMove);
-    section?.addEventListener("click",     handleClick);
+    const handleMouseDown = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      isDraggingRef.current       = true;
+      dragStartRef.current        = Date.now();
+      dragOriginRef.current       = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      if (section) section.style.cursor = "none";
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      if (section) section.style.cursor = "";
+    };
+
+    section?.addEventListener("mousemove",  handleMouseMove);
+    section?.addEventListener("click",      handleClick);
+    section?.addEventListener("mousedown",  handleMouseDown);
+    window.addEventListener("mouseup",      handleMouseUp);
 
     const render = () => {
       const w = canvas.offsetWidth;
       const h = canvas.offsetHeight;
       ctx.clearRect(0, 0, w, h);
 
-      const mx  = mouseRef.current.x;
-      const my  = mouseRef.current.y;
-      const now = Date.now();
-      const t   = (now - startTimeRef.current) / 1000;
+      const mx          = mouseRef.current.x;
+      const my          = mouseRef.current.y;
+      const now         = Date.now();
+      const t           = (now - startTimeRef.current) / 1000;
+      const isDragging  = isDraggingRef.current;
+      // Attraction target is locked to the click origin, not the moving cursor
+      const tx          = isDragging ? dragOriginRef.current.x : mx;
+      const ty          = isDragging ? dragOriginRef.current.y : my;
 
       // ── 1. Update chip physics + compute metadata ──────────────────────────
       ctx.font = CHIP_FONT;
@@ -194,19 +219,9 @@ export function GenerativeGrid() {
         const phys = chipPhysRef.current[i];
         if (!phys) return null;
 
-        // Base position with gentle float
+        // Base position (static)
         const basX = chip.bx * w;
-        const basY = chip.by * h + Math.sin(t * 0.55 + chip.phase) * CHIP_FLOAT_AMP;
-
-        // Cursor repulsion
-        const dxM = phys.x - mx;
-        const dyM = phys.y - my;
-        const distM = Math.sqrt(dxM * dxM + dyM * dyM);
-        if (distM < CHIP_PUSH_R && distM > 0) {
-          const force = (1 - distM / CHIP_PUSH_R) * CHIP_PUSH_STR;
-          phys.vx += (dxM / distM) * force;
-          phys.vy += (dyM / distM) * force;
-        }
+        const basY = chip.by * h;
 
         // Spring back to base
         phys.vx += (basX - phys.x) * CHIP_SPRING_K;
@@ -229,7 +244,7 @@ export function GenerativeGrid() {
         const ddx  = cx - mx;
         const ddy  = cy - my;
         const dist = Math.sqrt(ddx * ddx + ddy * ddy);
-        const glow = Math.max(0, 1 - dist / CHIP_HOVER_R);
+        const glow = Math.pow(Math.max(0, 1 - dist / CHIP_HOVER_R), 2);
 
         const isHit = mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
         if (isHit) {
@@ -239,20 +254,39 @@ export function GenerativeGrid() {
           }
         }
 
-        return { chip, cx, cy, bw, bh, bx, by, glow, isHit, index: i };
+        // cursor distance to chip center (for dot-push radius)
+        const chipPushR = Math.max(bw, bh) / 2 + 20;
+
+        return { chip, cx, cy, bw, bh, bx, by, glow, isHit, index: i, chipPushR };
       }).filter(Boolean) as NonNullable<ReturnType<typeof CHIPS.map>>[number] & {
         chip: ChipDef; cx: number; cy: number; bw: number; bh: number;
-        bx: number; by: number; glow: number; isHit: boolean; index: number;
+        bx: number; by: number; glow: number; isHit: boolean; index: number; chipPushR: number;
       }[];
 
       if (!chipMetas.some(m => m.isHit)) hoveredRef.current = -1;
+
+      // Pre-compute how many dots are currently sitting near each chip.
+      // When dots are pulled away the count drops and the chip reveals.
+      const chipDotDensity = chipMetas.map(m => {
+        const r2 = (Math.max(m.bw, m.bh) / 2 + 18) ** 2;
+        let count = 0;
+        for (const dot of dotsRef.current) {
+          const dx = dot.x - m.cx;
+          const dy = dot.y - m.cy;
+          if (dx * dx + dy * dy < r2) count++;
+        }
+        return count;
+      });
 
       // ── 2. Draw floating tech chips ───────────────────────────────────────
       ctx.save();
       ctx.font = CHIP_FONT;
       for (const m of chipMetas) {
         const isHovered = hoveredRef.current === m.index;
-        const alpha = isHovered ? 0.85 : (0.12 + m.glow * 0.45);
+        // Reveal when local dots have physically left the chip area (density < 3)
+        const density  = chipDotDensity[m.index] ?? 0;
+        const dragGlow = isDragging ? Math.max(0, 1 - density / 3) : 0;
+        const alpha = Math.max(m.glow, dragGlow) * 0.9;
 
         ctx.globalAlpha = alpha * 0.22;
         ctx.fillStyle   = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
@@ -278,14 +312,44 @@ export function GenerativeGrid() {
         const dxM = dot.x - mx;
         const dyM = dot.y - my;
         const distM = Math.sqrt(dxM * dxM + dyM * dyM);
-        if (distM < PUSH_RADIUS && distM > 0) {
-          const force = (1 - distM / PUSH_RADIUS) * PUSH_STRENGTH;
-          dot.vx += (dxM / distM) * force;
-          dot.vy += (dyM / distM) * force;
+        // For attraction use the locked origin, not the live cursor
+        const dxT = dot.x - tx;
+        const dyT = dot.y - ty;
+        const distT = Math.sqrt(dxT * dxT + dyT * dyT);
+
+        if (isDragging) {
+          if (distT > 1) {
+            dot.vx -= (dxT / distT) * PULL_STRENGTH;
+            dot.vy -= (dyT / distT) * PULL_STRENGTH;
+          }
+        } else {
+          if (distM < PUSH_RADIUS && distM > 0) {
+            const force = (1 - distM / PUSH_RADIUS) * PUSH_STRENGTH;
+            dot.vx += (dxM / distM) * force;
+            dot.vy += (dyM / distM) * force;
+          }
         }
 
-        dot.vx += (dot.bx - dot.x) * SPRING_K;
-        dot.vy += (dot.by - dot.y) * SPRING_K;
+        // Push dots away from chip center when cursor is near that chip (only when not dragging)
+        if (!isDragging) {
+          for (const m of chipMetas) {
+            if (m.glow <= 0) continue;
+            const dxC = dot.x - m.cx;
+            const dyC = dot.y - m.cy;
+            const distC = Math.sqrt(dxC * dxC + dyC * dyC);
+            if (distC < m.chipPushR && distC > 0) {
+              const force = (1 - distC / m.chipPushR) * PUSH_STRENGTH * m.glow * 3;
+              dot.vx += (dxC / distC) * force;
+              dot.vy += (dyC / distC) * force;
+            }
+          }
+        }
+
+        // Spring only active when not dragging — otherwise it fights the attraction
+        if (!isDragging) {
+          dot.vx += (dot.bx - dot.x) * SPRING_K;
+          dot.vy += (dot.by - dot.y) * SPRING_K;
+        }
         dot.vx *= DAMPING;
         dot.vy *= DAMPING;
         dot.x  += dot.vx;
@@ -296,7 +360,11 @@ export function GenerativeGrid() {
         const distI = Math.sqrt(dxI * dxI + dyI * dyI);
         const prox  = Math.max(0, 1 - distI / INFLUENCE_RADIUS);
 
-        dot.opacity += (dot.baseOpacity + prox * 0.65 - dot.opacity) * 0.08;
+        // During drag: keep dots visible so you can see them travel
+        const targetOpacity = isDragging
+          ? dot.baseOpacity + 0.35
+          : dot.baseOpacity + prox * 0.65;
+        dot.opacity += (targetOpacity - dot.opacity) * 0.08;
 
         const r = Math.round(ACCENT[0] * prox + 240 * (1 - prox));
         const g = Math.round(ACCENT[1] * prox + 240 * (1 - prox));
@@ -495,6 +563,29 @@ export function GenerativeGrid() {
         ctx.restore();
       }
 
+      // ── 7. Dot-ring cursor replacement during drag ────────────────────────
+      if (isDragging && mx > -500) {
+        const RING_DOTS  = 10;
+        const RING_R     = 14;
+        ctx.save();
+        for (let i = 0; i < RING_DOTS; i++) {
+          const angle  = (i / RING_DOTS) * Math.PI * 2 + t * 2;
+          const cx     = tx + Math.cos(angle) * RING_R;
+          const cy     = ty + Math.sin(angle) * RING_R;
+          const pulse  = 0.6 + 0.4 * Math.sin(t * 4 + (i / RING_DOTS) * Math.PI * 2);
+          ctx.beginPath();
+          ctx.arc(cx, cy, 1.8, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${pulse})`;
+          ctx.fill();
+        }
+        // Center dot
+        ctx.beginPath();
+        ctx.arc(tx, ty, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},1)`;
+        ctx.fill();
+        ctx.restore();
+      }
+
       rafRef.current = requestAnimationFrame(render);
     };
 
@@ -503,8 +594,10 @@ export function GenerativeGrid() {
     return () => {
       cancelAnimationFrame(rafRef.current);
       ro.disconnect();
-      section?.removeEventListener("mousemove", handleMouseMove);
-      section?.removeEventListener("click",     handleClick);
+      section?.removeEventListener("mousemove",  handleMouseMove);
+      section?.removeEventListener("click",      handleClick);
+      section?.removeEventListener("mousedown",  handleMouseDown);
+      window.removeEventListener("mouseup",      handleMouseUp);
     };
   }, [buildGrid, buildChips]);
 
