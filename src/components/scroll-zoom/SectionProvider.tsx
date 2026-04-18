@@ -12,6 +12,7 @@ import {
 interface SectionContextValue {
   current: number;
   direction: number;
+  boundary: number;
   sectionIds: string[];
   navigate: (index: number) => void;
   onTransitionComplete: () => void;
@@ -20,6 +21,7 @@ interface SectionContextValue {
 const SectionContext = createContext<SectionContextValue>({
   current: 0,
   direction: 1,
+  boundary: 0,
   sectionIds: [],
   navigate: () => {},
   onTransitionComplete: () => {},
@@ -35,6 +37,7 @@ interface Props {
 export function SectionProvider({ children, sectionIds }: Props) {
   const [current, setCurrent] = useState(0);
   const [direction, setDirection] = useState(1);
+  const [boundary, setBoundary] = useState(0);
   const isAnimating = useRef(false);
 
   const navigate = useCallback(
@@ -43,6 +46,7 @@ export function SectionProvider({ children, sectionIds }: Props) {
       if (index < 0 || index >= sectionIds.length) return;
       if (index === current) return;
       isAnimating.current = true;
+      setBoundary(Math.min(current, index));
       setDirection(index > current ? 1 : -1);
       setCurrent(index);
     },
@@ -55,7 +59,7 @@ export function SectionProvider({ children, sectionIds }: Props) {
 
   return (
     <SectionContext.Provider
-      value={{ current, direction, sectionIds, navigate, onTransitionComplete }}
+      value={{ current, direction, boundary, sectionIds, navigate, onTransitionComplete }}
     >
       {children}
     </SectionContext.Provider>

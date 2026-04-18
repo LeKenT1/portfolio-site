@@ -3,8 +3,12 @@
 import { useEffect, useRef, useCallback } from "react";
 
 interface Dot {
+  bx: number;
+  by: number;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   baseOpacity: number;
   opacity: number;
   size: number;
@@ -14,9 +18,10 @@ interface Ripple {
   x: number;
   y: number;
   startTime: number;
+  triggered: Set<number>; // dot indices already hit by this wave
 }
 
-interface Chip {
+interface ChipDef {
   label: string;
   desc:  string;
   bx: number;
@@ -24,7 +29,14 @@ interface Chip {
   phase: number;
 }
 
-const CHIPS: Chip[] = [
+interface ChipPhysics {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+const CHIPS: ChipDef[] = [
   { label: "React",      desc: "UI component library",      bx: 0.25, by: 0.22, phase: 0.0 },
   { label: "Next.js",    desc: "React framework & SSR",     bx: 0.68, by: 0.18, phase: 1.1 },
   { label: "TypeScript", desc: "Typed JavaScript",          bx: 0.55, by: 0.46, phase: 2.3 },
@@ -39,25 +51,44 @@ const INFLUENCE_RADIUS = 120;
 const CONNECT_RADIUS   = 100;
 const LINE_MAX_DIST    = 60;
 const CHIP_HOVER_R     = 150;
-const RIPPLE_DURATION  = 1200;
-const RIPPLE_MAX_R     = 180;
+const RIPPLE_DURATION  = 900;
+
+// Dot physics
+const PUSH_RADIUS   = 90;
+const PUSH_STRENGTH = 2.8;
+const SPRING_K      = 0.055;
+const DAMPING       = 0.82;
+
+// Chip physics
+const CHIP_PUSH_R   = 120;
+const CHIP_PUSH_STR = 3.5;
+const CHIP_SPRING_K = 0.04;
+const CHIP_DAMPING  = 0.88;
+const CHIP_FLOAT_AMP = 4;
+
+// Click impulse
+const IMPULSE_RADIUS = 170;
+const IMPULSE_STR    = 12;
+const CHIP_IMPULSE_R = 200;
+const CHIP_IMPULSE_STR = 6;
 
 // Chip visual constants
-const CHIP_FONT     = "12px 'Courier New', monospace";
-const CHIP_PAD_X    = 12;
-const CHIP_H        = 28;
+const CHIP_FONT  = "12px 'Courier New', monospace";
+const CHIP_PAD_X = 12;
+const CHIP_H     = 28;
 
 // Tooltip constants
-const TT_W          = 168;
-const TT_H          = 58;
-const TT_PAD        = 13;
-const TT_MARGIN     = 16; // min distance from canvas edge
-const TT_FADE_MS    = 180;
+const TT_W       = 168;
+const TT_H       = 58;
+const TT_PAD     = 13;
+const TT_MARGIN  = 16;
+const TT_FADE_MS = 180;
 
 export function GenerativeGrid() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const mouseRef       = useRef({ x: -1000, y: -1000 });
   const dotsRef        = useRef<Dot[]>([]);
+  const chipPhysRef    = useRef<ChipPhysics[]>([]);
   const rafRef         = useRef<number>(0);
   const ripplesRef     = useRef<Ripple[]>([]);
   const startTimeRef   = useRef<number>(0);
@@ -71,9 +102,12 @@ export function GenerativeGrid() {
     const dots: Dot[] = [];
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
+        const bx = c * gap;
+        const by = r * gap;
         dots.push({
-          x: c * gap,
-          y: r * gap,
+          bx, by,
+          x: bx, y: by,
+          vx: 0, vy: 0,
           baseOpacity: 0.12 + Math.random() * 0.1,
           opacity: 0.12,
           size: 1,
@@ -81,6 +115,17 @@ export function GenerativeGrid() {
       }
     }
     dotsRef.current = dots;
+  }, []);
+
+  const buildChips = useCallback((canvas: HTMLCanvasElement) => {
+    const w = canvas.offsetWidth;
+    const h = canvas.offsetHeight;
+    chipPhysRef.current = CHIPS.map(chip => ({
+      x: chip.bx * w,
+      y: chip.by * h,
+      vx: 0,
+      vy: 0,
+    }));
   }, []);
 
   useEffect(() => {
@@ -95,6 +140,7 @@ export function GenerativeGrid() {
       canvas.height = canvas.offsetHeight * window.devicePixelRatio;
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
       buildGrid(canvas);
+      buildChips(canvas);
     };
 
     const ro = new ResizeObserver(resize);
@@ -110,12 +156,23 @@ export function GenerativeGrid() {
 
     const handleClick = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      ripplesRef.current.push({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-        startTime: Date.now(),
-      });
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+
+      ripplesRef.current.push({ x: cx, y: cy, startTime: Date.now(), triggered: new Set() });
       if (ripplesRef.current.length > 6) ripplesRef.current.shift();
+
+      // Chip impulse
+      for (const phys of chipPhysRef.current) {
+        const dx   = phys.x - cx;
+        const dy   = phys.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CHIP_IMPULSE_R && dist > 0) {
+          const force = (1 - dist / CHIP_IMPULSE_R) * CHIP_IMPULSE_STR;
+          phys.vx += (dx / dist) * force;
+          phys.vy += (dy / dist) * force;
+        }
+      }
     };
 
     section?.addEventListener("mousemove", handleMouseMove);
@@ -131,11 +188,38 @@ export function GenerativeGrid() {
       const now = Date.now();
       const t   = (now - startTimeRef.current) / 1000;
 
-      // ── 1. Compute chip positions + detect hovered chip ───────────────────
+      // ── 1. Update chip physics + compute metadata ──────────────────────────
       ctx.font = CHIP_FONT;
       const chipMetas = CHIPS.map((chip, i) => {
-        const cx  = chip.bx * w;
-        const cy  = chip.by * h + Math.sin(t * 0.55 + chip.phase) * 5;
+        const phys = chipPhysRef.current[i];
+        if (!phys) return null;
+
+        // Base position with gentle float
+        const basX = chip.bx * w;
+        const basY = chip.by * h + Math.sin(t * 0.55 + chip.phase) * CHIP_FLOAT_AMP;
+
+        // Cursor repulsion
+        const dxM = phys.x - mx;
+        const dyM = phys.y - my;
+        const distM = Math.sqrt(dxM * dxM + dyM * dyM);
+        if (distM < CHIP_PUSH_R && distM > 0) {
+          const force = (1 - distM / CHIP_PUSH_R) * CHIP_PUSH_STR;
+          phys.vx += (dxM / distM) * force;
+          phys.vy += (dyM / distM) * force;
+        }
+
+        // Spring back to base
+        phys.vx += (basX - phys.x) * CHIP_SPRING_K;
+        phys.vy += (basY - phys.y) * CHIP_SPRING_K;
+
+        // Damping + integrate
+        phys.vx *= CHIP_DAMPING;
+        phys.vy *= CHIP_DAMPING;
+        phys.x  += phys.vx;
+        phys.y  += phys.vy;
+
+        const cx  = phys.x;
+        const cy  = phys.y;
         const tw  = ctx.measureText(chip.label).width;
         const bw  = tw + CHIP_PAD_X * 2;
         const bh  = CHIP_H;
@@ -156,9 +240,11 @@ export function GenerativeGrid() {
         }
 
         return { chip, cx, cy, bw, bh, bx, by, glow, isHit, index: i };
-      });
+      }).filter(Boolean) as NonNullable<ReturnType<typeof CHIPS.map>>[number] & {
+        chip: ChipDef; cx: number; cy: number; bw: number; bh: number;
+        bx: number; by: number; glow: number; isHit: boolean; index: number;
+      }[];
 
-      // Clear hover if no chip hit
       if (!chipMetas.some(m => m.isHit)) hoveredRef.current = -1;
 
       // ── 2. Draw floating tech chips ───────────────────────────────────────
@@ -168,18 +254,15 @@ export function GenerativeGrid() {
         const isHovered = hoveredRef.current === m.index;
         const alpha = isHovered ? 0.85 : (0.12 + m.glow * 0.45);
 
-        // Fill
         ctx.globalAlpha = alpha * 0.22;
         ctx.fillStyle   = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
         ctx.fillRect(m.bx, m.by, m.bw, m.bh);
 
-        // Border
         ctx.globalAlpha = alpha * (isHovered ? 1 : 0.55);
         ctx.strokeStyle = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
         ctx.lineWidth   = isHovered ? 1 : 0.5;
         ctx.strokeRect(m.bx, m.by, m.bw, m.bh);
 
-        // Label
         ctx.globalAlpha  = alpha;
         ctx.fillStyle    = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
         ctx.textAlign    = "center";
@@ -188,14 +271,30 @@ export function GenerativeGrid() {
       }
       ctx.restore();
 
-      // ── 3. Dots + collect near-mouse dots ─────────────────────────────────
-      const nearDots: Dot[] = [];
+      // ── 3. Dot physics + draw ─────────────────────────────────────────────
+      const nearDots: { x: number; y: number }[] = [];
 
       for (const dot of dotsRef.current) {
-        const dx   = dot.x - mx;
-        const dy   = dot.y - my;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const prox = Math.max(0, 1 - dist / INFLUENCE_RADIUS);
+        const dxM = dot.x - mx;
+        const dyM = dot.y - my;
+        const distM = Math.sqrt(dxM * dxM + dyM * dyM);
+        if (distM < PUSH_RADIUS && distM > 0) {
+          const force = (1 - distM / PUSH_RADIUS) * PUSH_STRENGTH;
+          dot.vx += (dxM / distM) * force;
+          dot.vy += (dyM / distM) * force;
+        }
+
+        dot.vx += (dot.bx - dot.x) * SPRING_K;
+        dot.vy += (dot.by - dot.y) * SPRING_K;
+        dot.vx *= DAMPING;
+        dot.vy *= DAMPING;
+        dot.x  += dot.vx;
+        dot.y  += dot.vy;
+
+        const dxI   = dot.bx - mx;
+        const dyI   = dot.by - my;
+        const distI = Math.sqrt(dxI * dxI + dyI * dyI);
+        const prox  = Math.max(0, 1 - distI / INFLUENCE_RADIUS);
 
         dot.opacity += (dot.baseOpacity + prox * 0.65 - dot.opacity) * 0.08;
 
@@ -208,7 +307,7 @@ export function GenerativeGrid() {
         ctx.fillStyle = `rgba(${r},${g},${b},${dot.opacity})`;
         ctx.fill();
 
-        if (dist < CONNECT_RADIUS) nearDots.push(dot);
+        if (distI < CONNECT_RADIUS) nearDots.push({ x: dot.x, y: dot.y });
       }
 
       // ── 4. Constellation lines ────────────────────────────────────────────
@@ -231,29 +330,100 @@ export function GenerativeGrid() {
         }
       }
 
-      // ── 5. Click ripples ──────────────────────────────────────────────────
+      // ── 5. Click — corner-bracket shockwave ───────────────────────────────
       ripplesRef.current = ripplesRef.current.filter(ripple => {
         const age      = now - ripple.startTime;
         if (age >= RIPPLE_DURATION) return false;
         const progress = age / RIPPLE_DURATION;
-        const eased    = 1 - Math.pow(1 - progress, 3);
+        // ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
 
+        ctx.save();
+
+        const maxR   = 160;
+        const radius = eased * maxR;
+        const fade   = 1 - progress;
+
+        // Push dots whose distance from click falls within the current wave front
+        dotsRef.current.forEach((dot, idx) => {
+          if (ripple.triggered.has(idx)) return;
+          const dx   = dot.bx - ripple.x;
+          const dy   = dot.by - ripple.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist <= radius && dist > 0) {
+            const force = (1 - dist / maxR) * IMPULSE_STR;
+            dot.vx += (dx / dist) * force;
+            dot.vy += (dy / dist) * force;
+            ripple.triggered.add(idx);
+          }
+        });
+
+        // Expanding dashed ring
+        ctx.setLineDash([6, 8]);
+        ctx.lineDashOffset = -t * 30;
         ctx.lineWidth   = 1;
-        ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${(1 - progress) * 0.5})`;
+        ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${fade * 0.5})`;
         ctx.beginPath();
-        ctx.arc(ripple.x, ripple.y, eased * RIPPLE_MAX_R, 0, Math.PI * 2);
+        ctx.arc(ripple.x, ripple.y, radius, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.setLineDash([]);
 
-        if (progress > 0.15) {
-          const p2     = (progress - 0.15) / 0.85;
-          const eased2 = 1 - Math.pow(1 - p2, 3);
-          ctx.lineWidth   = 0.5;
-          ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${(1 - p2) * 0.28})`;
+        // 4 expanding corner brackets
+        const BRACKET = 18;
+        const corners = [
+          { sx: -1, sy: -1 },
+          { sx:  1, sy: -1 },
+          { sx:  1, sy:  1 },
+          { sx: -1, sy:  1 },
+        ];
+        const bracketAlpha = fade * 0.9;
+        ctx.lineWidth   = 1.5;
+        ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${bracketAlpha})`;
+        for (const { sx, sy } of corners) {
+          const bx = ripple.x + sx * radius;
+          const by = ripple.y + sy * radius;
           ctx.beginPath();
-          ctx.arc(ripple.x, ripple.y, eased2 * RIPPLE_MAX_R * 0.75, 0, Math.PI * 2);
+          // horizontal arm
+          ctx.moveTo(bx - sx * BRACKET, by);
+          ctx.lineTo(bx, by);
+          // vertical arm
+          ctx.lineTo(bx, by - sy * BRACKET);
           ctx.stroke();
         }
 
+        // Center crosshair flash (fast fade)
+        if (progress < 0.35) {
+          const flashFade = 1 - progress / 0.35;
+          const crossLen  = 10 + progress * 20;
+          ctx.lineWidth   = 1;
+          ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${flashFade * 0.8})`;
+          ctx.beginPath();
+          ctx.moveTo(ripple.x - crossLen, ripple.y);
+          ctx.lineTo(ripple.x + crossLen, ripple.y);
+          ctx.moveTo(ripple.x, ripple.y - crossLen);
+          ctx.lineTo(ripple.x, ripple.y + crossLen);
+          ctx.stroke();
+
+          // Inner circle flash
+          ctx.beginPath();
+          ctx.arc(ripple.x, ripple.y, progress * 28, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${flashFade * 0.6})`;
+          ctx.lineWidth   = 1;
+          ctx.stroke();
+        }
+
+        // Second outer ring (delayed)
+        if (progress > 0.12) {
+          const p2     = (progress - 0.12) / 0.88;
+          const eased2 = 1 - Math.pow(1 - p2, 3);
+          ctx.lineWidth   = 0.6;
+          ctx.strokeStyle = `rgba(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]},${(1 - p2) * 0.25})`;
+          ctx.beginPath();
+          ctx.arc(ripple.x, ripple.y, eased2 * maxR * 1.3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
         return true;
       });
 
@@ -261,16 +431,15 @@ export function GenerativeGrid() {
       const hi = hoveredRef.current;
       if (hi >= 0) {
         const m      = chipMetas[hi];
+        if (!m) { rafRef.current = requestAnimationFrame(render); return; }
         const fadeIn = Math.min(1, (now - hoverStartRef.current) / TT_FADE_MS);
 
-        // Position tooltip: prefer right of chip, flip if too close to edge
         let tx = m.cx + m.bw / 2 + 24;
         let ty = m.cy - TT_H / 2;
         if (tx + TT_W > w - TT_MARGIN) tx = m.cx - m.bw / 2 - TT_W - 24;
         if (ty < TT_MARGIN)            ty = TT_MARGIN;
         if (ty + TT_H > h - TT_MARGIN) ty = h - TT_H - TT_MARGIN;
 
-        // Nearest tooltip corner for the connecting line
         const corners = [
           { x: tx,        y: ty        },
           { x: tx + TT_W, y: ty        },
@@ -287,7 +456,6 @@ export function GenerativeGrid() {
         ctx.save();
         ctx.globalAlpha = fadeIn;
 
-        // Connecting line
         ctx.beginPath();
         ctx.moveTo(m.cx, m.cy);
         ctx.lineTo(anchor.x, anchor.y);
@@ -295,7 +463,6 @@ export function GenerativeGrid() {
         ctx.lineWidth   = 0.8;
         ctx.stroke();
 
-        // Dot at chip anchor
         ctx.beginPath();
         ctx.arc(m.cx, m.cy, 3.5, 0, Math.PI * 2);
         ctx.fillStyle = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
@@ -304,28 +471,23 @@ export function GenerativeGrid() {
         ctx.lineWidth   = 1.5;
         ctx.stroke();
 
-        // Tooltip background
         ctx.fillStyle   = "rgba(6, 6, 6, 0.97)";
         ctx.globalAlpha = fadeIn;
         ctx.fillRect(tx, ty, TT_W, TT_H);
 
-        // Tooltip border
         ctx.strokeStyle = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
         ctx.lineWidth   = 0.8;
         ctx.strokeRect(tx, ty, TT_W, TT_H);
 
-        // Top accent line
-        ctx.fillStyle   = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
+        ctx.fillStyle = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
         ctx.fillRect(tx, ty, TT_W, 1.5);
 
-        // Chip label (title)
         ctx.font         = "bold 12px 'Courier New', monospace";
         ctx.fillStyle    = `rgb(${ACCENT[0]},${ACCENT[1]},${ACCENT[2]})`;
         ctx.textAlign    = "left";
         ctx.textBaseline = "top";
         ctx.fillText(m.chip.label, tx + TT_PAD, ty + TT_PAD + 2);
 
-        // Description
         ctx.font      = "11px 'Courier New', monospace";
         ctx.fillStyle = "rgba(210,210,210,0.65)";
         ctx.fillText(m.chip.desc, tx + TT_PAD, ty + TT_PAD + 22);
@@ -344,7 +506,7 @@ export function GenerativeGrid() {
       section?.removeEventListener("mousemove", handleMouseMove);
       section?.removeEventListener("click",     handleClick);
     };
-  }, [buildGrid]);
+  }, [buildGrid, buildChips]);
 
   return (
     <canvas

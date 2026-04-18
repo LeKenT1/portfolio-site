@@ -73,8 +73,9 @@ function ImageCarousel({ images, projectId }: { images: string[]; projectId: str
             src={images[index]}
             alt={`Screenshot ${index + 1}`}
             fill
-            className="object-cover object-top"
+            className="object-contain"
             sizes="(max-width: 1024px) 100vw, 66vw"
+            quality={100}
             priority={index === 0}
           />
         </motion.div>
@@ -208,8 +209,9 @@ export function ProjectCard({
               src={thumb}
               alt={project.title}
               fill
-              className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.05]"
+              className="object-contain transition-transform duration-500 group-hover:scale-[1.05]"
               sizes="(max-width: 1024px) 100vw, 33vw"
+              quality={100}
             />
             <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--card)] to-transparent" />
           </>
@@ -225,16 +227,20 @@ export function ProjectCard({
                 {project.accentLabel}
               </span>
             )}
-            <h3
+            <a
+              href={project.href ?? "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className={[
-                "font-semibold leading-tight tracking-tight truncate",
+                "font-semibold leading-tight tracking-tight truncate hover:underline underline-offset-2",
                 isFeatured
-                  ? "text-base text-[var(--foreground)]"
+                  ? "text-base text-[var(--foreground)] hover:text-[var(--accent)]"
                   : "text-sm text-[var(--foreground)] group-hover:text-[var(--accent)] transition-colors duration-200",
               ].join(" ")}
             >
               {project.title}
-            </h3>
+            </a>
           </div>
           <a
             href={project.href ?? "#"}

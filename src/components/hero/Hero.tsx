@@ -2,12 +2,9 @@
 
 import { motion } from "framer-motion";
 import { ArrowDown, MapPin, Briefcase, GraduationCap } from "lucide-react";
-import Image from "next/image";
 import { GenerativeGrid } from "./GenerativeGrid";
 import { useTranslation } from "@/i18n/context";
-
-// Replace with "/images/avatar.jpg" once you copy your photo there
-const AVATAR = "/images/avatar-placeholder.svg";
+import { useSectionNav } from "@/components/scroll-zoom/SectionProvider";
 
 const EASE = [0.25, 0.1, 0.25, 1] as [number, number, number, number];
 
@@ -22,6 +19,13 @@ const fadeUp = {
 
 export function Hero() {
   const { T } = useTranslation();
+  const { sectionIds, navigate } = useSectionNav();
+
+  const handleAnchor = (id: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    const idx = sectionIds.indexOf(id);
+    if (idx !== -1) navigate(idx);
+  };
 
   const credentials = [
     { icon: Briefcase, text: T.hero.credential0 },
@@ -50,7 +54,7 @@ export function Hero() {
           </span>
         </motion.div>
 
-        {/* Avatar + Name */}
+        {/* Name */}
         <motion.div
           custom={0.5}
           variants={fadeUp}
@@ -58,16 +62,8 @@ export function Hero() {
           animate="show"
           className="flex items-center gap-3 mb-4"
         >
-          <div className="relative w-10 h-10 rounded-full overflow-hidden border border-[var(--border)] flex-shrink-0">
-            <Image
-              src={AVATAR}
-              alt="Lemaire Quentin"
-              fill
-              className="object-cover"
-              sizes="40px"
-            />
-          </div>
-          <span className="font-mono text-xs tracking-widest uppercase text-[var(--muted-foreground)]">
+          <span className="h-px w-5 bg-[var(--accent)] flex-shrink-0" />
+          <span className="font-mono text-sm tracking-[0.18em] uppercase text-[var(--foreground)]">
             Lemaire Quentin
           </span>
         </motion.div>
@@ -135,6 +131,7 @@ export function Hero() {
         >
           <a
             href="#projects"
+            onClick={handleAnchor("projects")}
             className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium
               bg-[var(--accent)] text-black rounded-sm
               hover:bg-[var(--foreground)] transition-colors duration-200"
@@ -143,6 +140,7 @@ export function Hero() {
           </a>
           <a
             href="#contact"
+            onClick={handleAnchor("contact")}
             className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium
               border border-[var(--border)] text-[var(--foreground)] rounded-sm
               hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors duration-200"
