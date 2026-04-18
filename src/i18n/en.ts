@@ -9,7 +9,7 @@ contact: "Contact",
   },
   hero: {
     available: "Open to new projects",
-    subtitleBefore: "2 years of experience.",
+    subtitleBefore: "3 years of experience.",
     subtitleHighlight: "Specialized in ultra-fast MVP delivery",
     subtitleAfter: "with modern stacks and AI-powered workflows.",
     credential0: "2 years at Xefi — Frontend Developer (2023–2025)",
