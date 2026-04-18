@@ -37,6 +37,15 @@ contact: string;
     selfHostingHighlight: string;
     selfHostingAfter: string;
   };
+  ai: {
+    label: string;
+    title: string;
+    subtitle: string;
+    statProductivity: string;
+    statCodeReviewed: string;
+    statBlackBox: string;
+    principles: { title: string; body: string }[];
+  };
   contact: {
     label: string;
     title: string;

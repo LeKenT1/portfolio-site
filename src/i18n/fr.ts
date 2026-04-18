@@ -57,6 +57,20 @@ contact: "Contact",
     selfHostingAfter:
       ". Services de niveau production sans dépendance aux fournisseurs cloud.",
   },
+  ai: {
+    label: "Workflow IA",
+    title: "Développement augmenté par l'IA.",
+    subtitle: "J'utilise l'IA comme multiplicateur de force — pas comme remplaçant. Chaque ligne générée est relue, comprise et assumée.",
+    statProductivity: "Gain de productivité",
+    statCodeReviewed: "Code relu par un humain",
+    statBlackBox: "Code boîte noire livré",
+    principles: [
+      { title: "Rapidité sans raccourcis", body: "L'IA accélère le boilerplate et le scaffolding, libérant la concentration pour l'architecture et le produit." },
+      { title: "Ownership total", body: "Chaque ligne générée est lue, testée et comprise avant livraison. Zéro copier-coller aveugle." },
+      { title: "Prompting contextuel", body: "Des prompts précis, ancrés dans la base de code, produisent des résultats fiables — pas des suggestions génériques." },
+      { title: "Raffinement itératif", body: "Les sorties IA sont un premier jet. La connaissance métier et la revue de code en font du code production-grade." },
+    ],
+  },
   contact: {
     label: "Contact",
     title: "Construisons quelque chose.",

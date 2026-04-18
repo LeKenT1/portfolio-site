@@ -57,6 +57,20 @@ contact: "Contact",
     selfHostingAfter:
       ". Running production-grade services without cloud vendor lock-in.",
   },
+  ai: {
+    label: "AI Workflow",
+    title: "AI-augmented development.",
+    subtitle: "I use AI as a force multiplier — not a replacement. Every line of generated code is reviewed, understood, and owned.",
+    statProductivity: "Productivity gain",
+    statCodeReviewed: "Code reviewed by a human",
+    statBlackBox: "Black-box code shipped",
+    principles: [
+      { title: "Speed without shortcuts", body: "AI accelerates boilerplate and scaffolding, freeing focus for architecture and product decisions." },
+      { title: "Full ownership", body: "Every AI-generated line is read, tested, and understood before it ships. No copy-paste blindness." },
+      { title: "Context-aware prompting", body: "Precise prompts scoped to the codebase produce reliable outputs — not generic suggestions." },
+      { title: "Iterative refinement", body: "AI outputs are a first draft. Domain knowledge and code review turn them into production-grade code." },
+    ],
+  },
   contact: {
     label: "Contact",
     title: "Let's build something.",
