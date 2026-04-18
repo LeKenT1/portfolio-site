@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowDown, MapPin, Briefcase, GraduationCap } from "lucide-react";
 import { GenerativeGrid } from "./GenerativeGrid";
+import { TetrisGame } from "./TetrisGame";
 import { useTranslation } from "@/i18n/context";
 import { useSectionNav } from "@/components/scroll-zoom/SectionProvider";
 
@@ -20,6 +22,7 @@ const fadeUp = {
 export function Hero() {
   const { T } = useTranslation();
   const { sectionIds, navigate } = useSectionNav();
+  const [phase, setPhase] = useState<"grid" | "tetris">("grid");
 
   const handleAnchor = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -161,14 +164,20 @@ export function Hero() {
         </motion.div>
       </div>
 
-      {/* Right — generative grid */}
+      {/* Right — generative grid / tetris */}
       <section className="relative hidden lg:block border-l border-[var(--border)] overflow-hidden">
-        <GenerativeGrid />
-        <div className="absolute inset-0 bg-radial-[at_70%_30%] from-transparent via-transparent to-[var(--background)] opacity-60 pointer-events-none" />
-        <div className="absolute bottom-12 right-12 text-right space-y-1 pointer-events-none">
-          <p className="font-mono text-[10px] text-[var(--muted-foreground)] tracking-widest uppercase">{T.hero.generativeField}</p>
-          <p className="font-mono text-[10px] text-[var(--border)] tracking-widest">{T.hero.reactsTo}</p>
-        </div>
+        {phase === "grid" ? (
+          <>
+            <GenerativeGrid onAllActivated={() => setPhase("tetris")} />
+            <div className="absolute inset-0 bg-radial-[at_70%_30%] from-transparent via-transparent to-[var(--background)] opacity-60 pointer-events-none" />
+            <div className="absolute bottom-12 right-12 text-right space-y-1 pointer-events-none">
+              <p className="font-mono text-[10px] text-[var(--muted-foreground)] tracking-widest uppercase">{T.hero.generativeField}</p>
+              <p className="font-mono text-[10px] text-[var(--border)] tracking-widest">{T.hero.reactsTo}</p>
+            </div>
+          </>
+        ) : (
+          <TetrisGame />
+        )}
       </section>
 
       {/* Global grid lines */}
